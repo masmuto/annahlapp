@@ -1,18 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  // Vercel deployment: jangan pakai "standalone" (itu untuk Docker/self-hosted)
+  // Catatan: Jangan pakai "output: standalone" (untuk Docker, bukan Vercel)
   // Vercel auto-handles output optimization
 
   typescript: {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  // Supabase client uses some Node.js APIs that need to be externalized
-  experimental: {
-    serverComponentsExternalPackages: ["@supabase/supabase-js"],
-  },
+  // Note: serverComponentsExternalPackages dipindah ke top-level "serverExternalPackages"
+  // di Next.js 15+. Tapi untuk @supabase/supabase-js tidak diperlukan karena
+  // sudah isomorphic (bekerja di edge & node).
 };
 
 export default nextConfig;

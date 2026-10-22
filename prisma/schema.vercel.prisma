@@ -1,0 +1,200 @@
+// GO An Nahl - Rumah Tahfidz Management System
+// Schema untuk PRODUCTION (Vercel + Supabase PostgreSQL).
+//
+// File ini digunakan otomatis di Vercel saat env var PRISMA_SCHEMA=prisma/schema.vercel.prisma di-set.
+// Untuk local development, gunakan prisma/schema.prisma (SQLite).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  password    String
+  name        String
+  role        String   @default("admin") // admin | bendahara | pengelola
+  email       String?
+  phone       String?
+  avatar      String?  // URL atau inisial
+  active      Boolean  @default(true)
+  lastLogin   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Pengaturan global aplikasi (key-value)
+model Pengaturan {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("pengaturan")
+}
+
+// Template pesan WhatsApp untuk berbagai keperluan
+model PesanTemplate {
+  id          String   @id @default(cuid())
+  kode        String   @unique // contoh: bukti_pembayaran, tunggakan, jadwal
+  nama        String
+  isi         String   // template dengan placeholder {nama}, {nis}, {bulan}, {jumlah}, dll
+  kategori    String   @default("umum") // pembayaran | tunggakan | jadwal | umum
+  aktif       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("pesan_template")
+}
+
+// Log pesan WhatsApp yang dikirim
+model PesanLog {
+  id         String   @id @default(cuid())
+  penerima   String   // nomor telepon
+  namaPenerima String
+  pesan      String
+  kategori   String   // pembayaran | tunggakan | jadwal | manual
+  status     String   @default("terkirim") // terkirim | gagal | pending
+  error      String?
+  userId     String?  // pengirim
+  createdAt  DateTime @default(now())
+
+  @@map("pesan_log")
+}
+
+model Santri {
+  id            String   @id @default(cuid())
+  nis           String   @unique // format: SN-2025-001
+  nama          String
+  jenisKelamin  String   // L | P
+  tempatLahir   String?
+  tanggalLahir  DateTime?
+  alamat        String?
+  namaAyah      String?
+  namaIbu       String?
+  noHpOrtu      String?
+  kelasId       String?
+  kelas         Kelas?   @relation(fields: [kelasId], references: [id])
+  tanggalMasuk  DateTime @default(now())
+  status        String   @default("aktif") // aktif | lulus | nonaktif
+  catatan       String?
+  sppBulanan    Float    @default(150000)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  pembayaran    PembayaranSPP[]
+  anggotaKelompok AnggotaKelompok[]
+
+  @@map("santri")
+}
+
+model Ustaz {
+  id            String   @id @default(cuid())
+  nip           String?  @unique
+  nama          String
+  jenisKelamin  String   // L | P
+  tempatLahir   String?
+  tanggalLahir  DateTime?
+  alamat        String?
+  noHp          String?
+  email         String?
+  spesialisasi  String?  // Tahfidz | Tajwid | Tafsir | dll
+  tanggalMasuk  DateTime @default(now())
+  status        String   @default("aktif") // aktif | nonaktif
+  catatan       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  kelas         Kelas[]
+  kelompokBelajar KelompokBelajar[]
+
+  @@map("ustaz")
+}
+
+model Kelas {
+  id          String   @id @default(cuid())
+  nama        String   @unique // contoh: Kelas A - Iqra, Kelas B - Tahfidz
+  tingkat     String   // Iqra | Tahfidz | Tadarus | dll
+  ustazId     String?
+  ustaz       Ustaz?   @relation(fields: [ustazId], references: [id])
+  kapasitas   Int      @default(20)
+  keterangan  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  santri      Santri[]
+
+  @@map("kelas")
+}
+
+// Kelompok Belajar = kelompok santri yang belajar bersama dengan pembimbing ustaz.
+// Satu kelompok bisa memiliki jadwal lebih dari 1 hari dalam seminggu
+// (misal: Senin & Kamis pagi, atau Selasa & Jumat sore).
+model KelompokBelajar {
+  id            String   @id @default(cuid())
+  nama          String   // contoh: "Kelompok Tahfidz Pagi A"
+  ustazId       String?
+  ustaz         Ustaz?   @relation(fields: [ustazId], references: [id])
+  mataPelajaran String   // Tahfidz | Tajwid | Tadarus | Tahsin | Iqra | Tafsir
+  ruangan       String?
+  kapasitas     Int      @default(15) // maksimal anggota per kelompok
+  catatan       String?
+  status        String   @default("aktif") // aktif | selesai | dibatalkan
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  jadwal        JadwalKelompok[]
+  anggota       AnggotaKelompok[]
+
+  @@map("kelompok_belajar")
+}
+
+// Jadwal per kelompok — 1 kelompok bisa punya banyak jadwal (multi-hari)
+model JadwalKelompok {
+  id          String   @id @default(cuid())
+  kelompokId  String
+  kelompok    KelompokBelajar @relation(fields: [kelompokId], references: [id], onDelete: Cascade)
+  hari        String   // Senin, Selasa, ..., Ahad
+  jamMulai    String   // format: 07:00
+  jamSelesai  String   // format: 09:00
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([kelompokId, hari, jamMulai])
+  @@map("jadwal_kelompok")
+}
+
+// Junction table: many-to-many antara KelompokBelajar dan Santri
+model AnggotaKelompok {
+  id              String   @id @default(cuid())
+  kelompokId      String
+  kelompok        KelompokBelajar @relation(fields: [kelompokId], references: [id], onDelete: Cascade)
+  santriId        String
+  santri          Santri   @relation(fields: [santriId], references: [id], onDelete: Cascade)
+  tanggalBergabung DateTime @default(now())
+  catatan         String?  // catatan khusus anggota ini di kelompok tersebut
+
+  @@unique([kelompokId, santriId])
+  @@map("anggota_kelompok")
+}
+
+model PembayaranSPP {
+  id              String   @id @default(cuid())
+  noPembayaran    String   @unique // format: SPP-202510-001
+  santriId        String
+  santri          Santri   @relation(fields: [santriId], references: [id])
+  bulan           String   // format: 2025-10
+  jumlah          Float
+  tanggalBayar    DateTime @default(now())
+  metodePembayaran String  @default("tunai") // tunai | transfer | qris
+  status          String   @default("lunas") // lunas | pending
+  keterangan      String?
+  diterimaOleh    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("pembayaran_spp")
+  @@unique([santriId, bulan])
+}

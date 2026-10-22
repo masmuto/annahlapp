@@ -18,6 +18,7 @@ import { ProfilView } from "@/components/views/profil-view";
 import { UserManagerView } from "@/components/views/users-view";
 import { DatabaseView } from "@/components/views/database-view";
 import { WhatsAppView } from "@/components/views/whatsapp-view";
+import { SupabaseConnectionBanner } from "@/components/supabase-connection-banner";
 import { AnNahlTagline } from "@/components/an-nahl-logo";
 import { Loader2 } from "lucide-react";
 
@@ -85,6 +86,9 @@ export function AppShell() {
           onLogout={handleLogout}
           user={user}
         />
+
+        {/* Supabase connection banner (muncul jika ada masalah koneksi) */}
+        <SupabaseConnectionBanner />
 
         <main className="flex-1 p-4 sm:p-6 pb-24 md:pb-6 overflow-x-hidden">
           <div className="max-w-7xl mx-auto">

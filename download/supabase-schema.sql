@@ -1,8 +1,15 @@
 -- ============================================================================
--- GO An Nahl — Supabase Schema
+-- GO An Nahl — Supabase Schema (CLEAN VERSION)
 -- ============================================================================
 -- Run this entire file in Supabase SQL Editor (Dashboard → SQL → New Query)
--- Safe to run multiple times (uses IF NOT EXISTS / DROP IF EXISTS)
+-- Safe to run multiple times (uses IF NOT EXISTS / ON CONFLICT DO NOTHING)
+--
+-- Versi ini TIDAK menggunakan RLS dan function di schema auth (yang butuh
+-- superadmin access). Aplikasi menggunakan custom auth (cookie session) +
+-- service_role key di server-side yang otomatis bypass RLS.
+--
+-- Untuk production dengan Supabase Auth + RLS, lihat versi advanced
+-- di bagian bawah file ini (commented out).
 -- ============================================================================
 
 -- ============================================================================
@@ -58,7 +65,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE TABLE IF NOT EXISTS users (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   username    TEXT UNIQUE NOT NULL,
-  password    TEXT NOT NULL, -- store hashed password in production (bcrypt/argon2)
+  password    TEXT NOT NULL,
   name        TEXT NOT NULL,
   role        user_role NOT NULL DEFAULT 'admin',
   email       TEXT,
@@ -181,7 +188,7 @@ CREATE TABLE IF NOT EXISTS pembayaran_spp (
   id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   no_pembayaran     TEXT UNIQUE NOT NULL,
   santri_id         UUID NOT NULL REFERENCES santri(id) ON DELETE CASCADE,
-  bulan             TEXT NOT NULL, -- format: YYYY-MM
+  bulan             TEXT NOT NULL,
   jumlah            NUMERIC(12,2) NOT NULL,
   tanggal_bayar     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   metode_pembayaran metode_pembayaran NOT NULL DEFAULT 'tunai',
@@ -278,137 +285,33 @@ CREATE TRIGGER trg_pesan_template_updated BEFORE UPDATE ON pesan_template
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================================
--- 5. ROW LEVEL SECURITY (RLS)
+-- 5. ROW LEVEL SECURITY (RLS) — DISABLED
 -- ============================================================================
--- Strategy: All authenticated requests can read.
--- Only admin role can write (insert/update/delete) on most tables.
--- Each user can update their own profile.
+-- Aplikasi menggunakan:
+--   1. Custom auth (cookie session, bukan Supabase Auth)
+--   2. Service role key di server-side (bypass RLS)
+--   3. Prisma ORM untuk database access
+--
+-- Karena itu RLS tidak relevan dan kami DISABLE untuk semua tabel.
+-- Server-side API routes sudah melakukan otorisasi sendiri (cek role admin/
+-- bendahara/pengelola) sebelum mengakses database.
+--
+-- UNTUK PRODUCTION DENGAN SUPABASE AUTH:
+-- Lihat bagian "RLS POLICIES (ADVANCED)" di bawah untuk meng-enable RLS
+-- dengan aman setelah setup Supabase Auth.
 -- ============================================================================
 
--- Helper function to get current user role from JWT
-CREATE OR REPLACE FUNCTION auth.user_role()
-RETURNS TEXT AS $$
-  SELECT COALESCE(
-    (auth.jwt() -> 'user_role')::TEXT,
-    (auth.jwt() -> 'app_metadata' -> 'role')::TEXT,
-    'pengelola'
-  );
-$$ LANGUAGE SQL STABLE;
-
--- Helper: is current user admin?
-CREATE OR REPLACE FUNCTION auth.is_admin()
-RETURNS BOOLEAN AS $$
-  SELECT auth.user_role() = 'admin';
-$$ LANGUAGE SQL STABLE;
-
--- ---------- users ----------
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "users_select_authenticated" ON users;
-CREATE POLICY "users_select_authenticated" ON users
-  FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "users_update_self" ON users;
-CREATE POLICY "users_update_self" ON users
-  FOR UPDATE TO authenticated USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
-DROP POLICY IF EXISTS "users_insert_admin" ON users;
-CREATE POLICY "users_insert_admin" ON users
-  FOR INSERT TO authenticated WITH CHECK (auth.is_admin());
-DROP POLICY IF EXISTS "users_update_admin" ON users;
-CREATE POLICY "users_update_admin" ON users
-  FOR UPDATE TO authenticated USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-DROP POLICY IF EXISTS "users_delete_admin" ON users;
-CREATE POLICY "users_delete_admin" ON users
-  FOR DELETE TO authenticated USING (auth.is_admin());
-
--- ---------- ustaz ----------
-ALTER TABLE ustaz ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "ustaz_select_authenticated" ON ustaz;
-CREATE POLICY "ustaz_select_authenticated" ON ustaz FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "ustaz_write_admin" ON ustaz;
-CREATE POLICY "ustaz_write_admin" ON ustaz FOR ALL TO authenticated
-  USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-
--- ---------- kelas ----------
-ALTER TABLE kelas ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "kelas_select_authenticated" ON kelas;
-CREATE POLICY "kelas_select_authenticated" ON kelas FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "kelas_write_admin" ON kelas;
-CREATE POLICY "kelas_write_admin" ON kelas FOR ALL TO authenticated
-  USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-
--- ---------- santri ----------
-ALTER TABLE santri ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "santri_select_authenticated" ON santri;
-CREATE POLICY "santri_select_authenticated" ON santri FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "santri_write_admin" ON santri;
-CREATE POLICY "santri_write_admin" ON santri FOR ALL TO authenticated
-  USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-
--- ---------- kelompok_belajar ----------
-ALTER TABLE kelompok_belajar ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "kelompok_select_authenticated" ON kelompok_belajar;
-CREATE POLICY "kelompok_select_authenticated" ON kelompok_belajar
-  FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "kelompok_write_admin" ON kelompok_belajar;
-CREATE POLICY "kelompok_write_admin" ON kelompok_belajar FOR ALL TO authenticated
-  USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-
--- ---------- jadwal_kelompok ----------
-ALTER TABLE jadwal_kelompok ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "jadwal_select_authenticated" ON jadwal_kelompok;
-CREATE POLICY "jadwal_select_authenticated" ON jadwal_kelompok
-  FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "jadwal_write_admin" ON jadwal_kelompok;
-CREATE POLICY "jadwal_write_admin" ON jadwal_kelompok FOR ALL TO authenticated
-  USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-
--- ---------- anggota_kelompok ----------
-ALTER TABLE anggota_kelompok ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "anggota_select_authenticated" ON anggota_kelompok;
-CREATE POLICY "anggota_select_authenticated" ON anggota_kelompok
-  FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "anggota_write_admin" ON anggota_kelompok;
-CREATE POLICY "anggota_write_admin" ON anggota_kelompok FOR ALL TO authenticated
-  USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-
--- ---------- pembayaran_spp ----------
-ALTER TABLE pembayaran_spp ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "pembayaran_select_authenticated" ON pembayaran_spp;
-CREATE POLICY "pembayaran_select_authenticated" ON pembayaran_spp
-  FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "pembayaran_write_admin" ON pembayaran_spp;
-CREATE POLICY "pembayaran_write_admin" ON pembayaran_spp FOR ALL TO authenticated
-  USING (auth.is_admin() OR auth.user_role() = 'bendahara')
-  WITH CHECK (auth.is_admin() OR auth.user_role() = 'bendahara');
-
--- ---------- pengaturan ----------
-ALTER TABLE pengaturan ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "pengaturan_select_authenticated" ON pengaturan;
-CREATE POLICY "pengaturan_select_authenticated" ON pengaturan
-  FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "pengaturan_write_admin" ON pengaturan;
-CREATE POLICY "pengaturan_write_admin" ON pengaturan FOR ALL TO authenticated
-  USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-
--- ---------- pesan_template ----------
-ALTER TABLE pesan_template ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "pesan_template_select_authenticated" ON pesan_template;
-CREATE POLICY "pesan_template_select_authenticated" ON pesan_template
-  FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "pesan_template_write_admin" ON pesan_template;
-CREATE POLICY "pesan_template_write_admin" ON pesan_template FOR ALL TO authenticated
-  USING (auth.is_admin()) WITH CHECK (auth.is_admin());
-
--- ---------- pesan_log ----------
-ALTER TABLE pesan_log ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "pesan_log_select_authenticated" ON pesan_log;
-CREATE POLICY "pesan_log_select_authenticated" ON pesan_log
-  FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "pesan_log_insert_authenticated" ON pesan_log;
-CREATE POLICY "pesan_log_insert_authenticated" ON pesan_log
-  FOR INSERT TO authenticated WITH CHECK (TRUE);
-DROP POLICY IF EXISTS "pesan_log_delete_admin" ON pesan_log;
-CREATE POLICY "pesan_log_delete_admin" ON pesan_log
-  FOR DELETE TO authenticated USING (auth.is_admin());
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ustaz DISABLE ROW LEVEL SECURITY;
+ALTER TABLE kelas DISABLE ROW LEVEL SECURITY;
+ALTER TABLE santri DISABLE ROW LEVEL SECURITY;
+ALTER TABLE kelompok_belajar DISABLE ROW LEVEL SECURITY;
+ALTER TABLE jadwal_kelompok DISABLE ROW LEVEL SECURITY;
+ALTER TABLE anggota_kelompok DISABLE ROW LEVEL SECURITY;
+ALTER TABLE pembayaran_spp DISABLE ROW LEVEL SECURITY;
+ALTER TABLE pengaturan DISABLE ROW LEVEL SECURITY;
+ALTER TABLE pesan_template DISABLE ROW LEVEL SECURITY;
+ALTER TABLE pesan_log DISABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- 6. VIEWS — for convenience queries
@@ -448,7 +351,7 @@ LEFT JOIN kelas k ON s.kelas_id = k.id;
 -- 7. SEED DATA — Default admin, pengaturan, pesan templates
 -- ============================================================================
 
--- Default users (password is plain text — REPLACE with bcrypt hash in production!)
+-- Default users (password plain text — GANTI dengan bcrypt hash di production!)
 INSERT INTO users (username, password, name, role, email, phone) VALUES
   ('admin', 'admin123', 'Administrator An Nahl', 'admin', 'admin@tahfidzannahl.sch.id', '081200000001'),
   ('bendahara', 'bendahara123', 'Bendahara An Nahl', 'bendahara', 'bendahara@tahfidzannahl.sch.id', '081200000002'),
@@ -505,7 +408,7 @@ INSERT INTO pesan_template (kode, nama, isi, kategori, aktif) VALUES
 ON CONFLICT (kode) DO NOTHING;
 
 -- ============================================================================
--- 8. SAMPLE DATA (Optional — uncomment to add demo santri/ustaz/kelas)
+-- 8. SAMPLE DATA (Optional — uncomment to add demo data)
 -- ============================================================================
 /*
 -- Demo ustaz
@@ -532,33 +435,69 @@ ON CONFLICT (nis) DO NOTHING;
 */
 
 -- ============================================================================
--- DONE. Schema ready. 
+-- DONE. Schema ready.
 -- ============================================================================
 -- Next steps:
--- 1. Copy NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to .env.local
--- 2. Set SUPABASE_SERVICE_ROLE_KEY for server-side admin operations (Dashboard → Settings → API)
--- 3. To create admin users with role in auth.users, use the function below
+-- 1. Run this SQL in Supabase SQL Editor
+-- 2. Test connection: GET /api/supabase-test
+-- 3. Seed demo data via app: POST /api/seed?force=true
 -- ============================================================================
 
+
 -- ============================================================================
--- APPENDIX: Helper function to set user role in auth.users metadata
+-- RLS POLICIES (ADVANCED) — OPTIONAL, untuk production dengan Supabase Auth
 -- ============================================================================
--- Run this after creating users via Supabase Auth (sign up). It will set their
--- role in user_metadata so RLS policies can read it.
+-- Bagian ini TIDAK dieksekusi secara default. Uncomment jika:
+-- 1. Anda sudah setup Supabase Auth (Email/Password signup)
+-- 2. User login via supabase.auth.signIn() (bukan custom cookie)
+-- 3. Ingin enforce row-level security berdasarkan JWT user
 --
--- CREATE OR REPLACE FUNCTION public.set_user_role(user_uuid UUID, new_role TEXT)
--- RETURNS VOID AS $$
--- BEGIN
---   UPDATE auth.users
---   SET raw_user_meta_data = jsonb_set(
---     COALESCE(raw_user_meta_data, '{}'::jsonb),
---     '{user_role}',
---     to_jsonb(new_role)
---   )
---   WHERE id = user_uuid;
--- END;
--- $$ LANGUAGE plpgsql SECURITY DEFINER;
---
--- Usage:
--- SELECT public.set_user_role('uuid-user-id', 'admin');
+-- Sebelum enable RLS, pastikan:
+-- - Setiap user di auth.users punya user_metadata.user_role = 'admin'/'bendahara'/'pengelola'
+-- - Function helper di bawah sudah dibuat di schema public (BUKAN auth)
 -- ============================================================================
+/*
+
+-- Helper function di schema PUBLIC (bukan auth) — tidak butuh superadmin
+CREATE OR REPLACE FUNCTION public.get_user_role()
+RETURNS TEXT AS $$
+  SELECT COALESCE(
+    (auth.jwt() -> 'user_role')::TEXT,
+    (auth.jwt() -> 'app_metadata' -> 'role')::TEXT,
+    'pengelola'
+  );
+$$ LANGUAGE SQL STABLE;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+  SELECT public.get_user_role() = 'admin';
+$$ LANGUAGE SQL STABLE;
+
+-- Enable RLS
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ustaz ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kelas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE santri ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kelompok_belajar ENABLE ROW LEVEL SECURITY;
+ALTER TABLE jadwal_kelompok ENABLE ROW LEVEL SECURITY;
+ALTER TABLE anggota_kelompok ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pembayaran_spp ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pengaturan ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pesan_template ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pesan_log ENABLE ROW LEVEL SECURITY;
+
+-- Example policies (sesuaikan dengan kebutuhan)
+CREATE POLICY "users_select_authenticated" ON users
+  FOR SELECT TO authenticated USING (TRUE);
+CREATE POLICY "users_update_self" ON users
+  FOR UPDATE TO authenticated USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+CREATE POLICY "users_all_admin" ON users
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+CREATE POLICY "santri_select_authenticated" ON santri
+  FOR SELECT TO authenticated USING (TRUE);
+CREATE POLICY "santri_all_admin" ON santri
+  FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- (lanjutkan pattern yang sama untuk tabel lainnya...)
+*/

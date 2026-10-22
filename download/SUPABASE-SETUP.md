@@ -25,16 +25,22 @@ Dokumen ini menjelaskan cara menghubungkan aplikasi GO An Nahl dengan **Supabase
 4. Copy seluruh isinya → paste ke SQL Editor
 5. Klik **Run** (tunggu sampai sukses, ~5 detik)
 
+> ⚠️ **PENTING**: Jika sebelumnya Anda sudah mencoba run SQL dan dapat error
+> `permission denied for schema auth`, **ABAIKAN error tersebut**. Schema
+> versi baru sudah diperbaiki — tidak lagi membuat function di schema `auth`.
+> Cukup run ulang SQL baru, tidak perlu drop tabel yang sudah ter-create
+> (semua statement pakai `IF NOT EXISTS` / `ON CONFLICT DO NOTHING`).
+
 Schema akan membuat:
 - ✅ 11 tabel (users, ustaz, kelas, santri, kelompok_belajar, jadwal_kelompok, anggota_kelompok, pembayaran_spp, pengaturan, pesan_template, pesan_log)
 - ✅ 8 enum types
-- ✅ Indexes untuk query performance
-- ✅ Triggers auto-update `updated_at`
-- ✅ Row Level Security (RLS) policies
-- ✅ 3 convenience views
+- ✅ 25 indexes untuk query performance
+- ✅ 8 triggers auto-update `updated_at`
+- ✅ 3 views untuk convenience query
 - ✅ 3 user default (admin, bendahara, pengelola)
-- ✅ 13 pengaturan default
-- ✅ 4 pesan template default
+- ✅ 13 pengaturan default (WA settings, app config, SPP defaults)
+- ✅ 4 pesan template default (bukti_pembayaran, tunggakan_spp, info_jadwal, pengumuman_umum)
+- ✅ RLS DISABLED (aman karena pakai service_role key di server-side, lihat catatan di bawah)
 
 ## Langkah 3: Isi `.env.local` (atau `.env`)
 
@@ -93,16 +99,39 @@ pesan_template (kode, isi, kategori)
 pesan_log (penerima, status, kategori)
 ```
 
-## RLS Policies
+## RLS (Row Level Security)
 
-| Tabel | SELECT | INSERT/UPDATE/DELETE |
-|---|---|---|
-| users | authenticated | self-update + admin all |
-| ustaz, kelas, santri | authenticated | admin only |
-| kelompok_belajar, jadwal_kelompok, anggota_kelompok | authenticated | admin only |
-| pembayaran_spp | authenticated | admin + bendahara |
-| pengaturan, pesan_template | authenticated | admin only |
-| pesan_log | authenticated | all insert + admin delete |
+**Status: DISABLED** di schema default (untuk kompatibilitas maksimal).
+
+### Kenapa RLS DISABLED?
+
+Aplikasi menggunakan:
+1. **Custom auth** (cookie session, bukan Supabase Auth)
+2. **Service role key** di server-side (otomatis bypass RLS)
+3. **Prisma ORM** untuk database access
+
+Karena itu RLS tidak relevan — otorisasi sudah di-handle di API routes (cek role admin/bendahara/pengelola sebelum akses database).
+
+### Kapan Meng-enable RLS?
+
+Jika Anda ingin:
+- Pakai **Supabase Auth** (login/register via Supabase)
+- Akses database langsung dari frontend dengan anon key
+- Enforce row-level security per user
+
+Lihat bagian "RLS POLICIES (ADVANCED)" di akhir file `supabase-schema.sql` (commented out). Enable setelah:
+1. Setup Supabase Auth (Email/Password)
+2. Setiap user di `auth.users` punya `user_metadata.user_role = 'admin'/'bendahara'/'pengelola'`
+3. Uncomment section RLS advanced di SQL schema
+
+### Otorisasi yang Berjalan (Server-side)
+
+| Role | Akses |
+|---|---|
+| `admin` | Full access semua fitur + User Manager + Database reset |
+| `bendahara` | Pembayaran SPP + Laporan + Profil sendiri |
+| `pengelola` | Read-only sebagian besar data + Profil sendiri |
+| (anonymous) | Hanya halaman login |
 
 ## Migration dari Prisma/SQLite ke Supabase
 

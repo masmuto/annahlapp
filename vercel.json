@@ -9,8 +9,7 @@
   },
   "build": {
     "env": {
-      "NEXT_TELEMETRY_DISABLED": "1",
-      "PRISMA_SCHEMA": "prisma/schema.vercel.prisma"
+      "NEXT_TELEMETRY_DISABLED": "1"
     }
   },
   "regions": ["sin1"],

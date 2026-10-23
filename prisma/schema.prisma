@@ -1,16 +1,21 @@
 // GO An Nahl - Rumah Tahfidz Management System
-// Schema untuk LOCAL DEVELOPMENT (SQLite).
+// Schema untuk PostgreSQL (Supabase) — digunakan untuk BOTH local dev & production (Vercel).
 //
-// Untuk production/Vercel: gunakan prisma/schema.vercel.prisma (PostgreSQL).
-// Vercel akan otomatis pakai schema.vercel.prisma via env var PRISMA_SCHEMA.
+// Connection string di-set via env var DATABASE_URL.
+// DIRECT_URL opsional untuk prisma migrate/db push (direct connection tanpa pooler).
+//
+// Setup:
+// 1. Local dev: isi .env dengan DATABASE_URL dari Supabase (Connection pooling → Transaction)
+// 2. Vercel: set DATABASE_URL & DIRECT_URL di Vercel Dashboard → Settings → Environment Variables
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {

@@ -66,12 +66,11 @@ Atau jika ingin pakai Supabase SQL schema yang sudah disediakan (alternatif):
 |---|---|---|
 | `DATABASE_URL` | `postgresql://postgres.obxqnotzsqxllddegsum:[PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres` | ✅ Yes |
 | `DIRECT_URL` | `postgresql://postgres:[PASSWORD]@db.obxqnotzsqxllddegsum.supabase.co:5432/postgres` | ✅ Yes |
-| `PRISMA_SCHEMA` | `prisma/schema.vercel.prisma` | No (penting!) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://obxqnotzsqxllddegsum.supabase.co` | No |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_S4wWWeHnYGenAzgEWBM7Hg_8rz29ZSl` | No |
 | `SUPABASE_SERVICE_ROLE_KEY` | `eyJxxx...` (dari Supabase Dashboard → API → service_role) | ✅ Yes |
 
-> **PENTING**: `PRISMA_SCHEMA=prisma/schema.vercel.prisma` WAJIB di-set di Vercel. Tanpa ini, build akan pakai schema SQLite (yang tidak kompatibel dengan PostgreSQL). Env var ini sudah otomatis di-set via `vercel.json` build.env, tapi sebaiknya tetap ditambah manual di Dashboard untuk safety.
+> **Catatan**: Hanya 5 env vars. Tidak perlu `PRISMA_SCHEMA` lagi — schema sekarang single-mode PostgreSQL.
 
 7. Centang semua environment: **Production**, **Preview**, **Development**
 8. Klik **Deploy** — tunggu 2-3 menit
@@ -99,7 +98,6 @@ vercel
 # Set env vars:
 vercel env add DATABASE_URL
 vercel env add DIRECT_URL
-vercel env add PRISMA_SCHEMA  # isi: prisma/schema.vercel.prisma
 vercel env add NEXT_PUBLIC_SUPABASE_URL
 vercel env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 vercel env add SUPABASE_SERVICE_ROLE_KEY
@@ -193,6 +191,16 @@ Setelah setup pertama:
 
 ## Troubleshooting
 
+### Error: `Environment variable not found: DATABASE_URL` + `provider = "sqlite"`
+**Penyebab**: Vercel masih pakai source code LAMA (yang punya dual schema SQLite/PostgreSQL). Prisma fallback ke schema.prisma (SQLite) dan butuh DATABASE_URL SQLite (`file:...`), tapi di env hanya ada PostgreSQL URL.
+**Solusi**:
+1. **Re-download source ZIP terbaru**: `http://localhost:3000/go-an-nahl-source.zip` (atau dari Vercel production yang sudah updated)
+2. **Hapus Vercel project lama** (atau push source baru ke GitHub yang sama)
+3. **Create new Vercel project** dari source ZIP/repo baru
+4. Set 5 env vars (TANPA `PRISMA_SCHEMA` — tidak perlu lagi)
+5. Deploy ulang
+6. Hapus env var `PRISMA_SCHEMA` jika ada di project lama
+
 ### Error: `PrismaClientInitializationError: Can't reach database server`
 **Penyebab**: Connection string salah atau database password tidak benar.
 **Solusi**:
@@ -200,12 +208,13 @@ Setelah setup pertama:
 - Cek password tidak ada karakter khusus yang perlu di-encode (e.g., `@` → `%40`)
 - Test connection dari lokal dengan `bun run db:push`
 
-### Error: `Environment variable "DATABASE_URL" could not be found`
-**Penyebab**: Env var belum di-set di Vercel.
+### Error: `Environment variable "DATABASE_URL" could not be found` (di Vercel)
+**Penyebab**: Env var belum di-set di Vercel Dashboard.
 **Solusi**:
 - Vercel Dashboard → Project → Settings → Environment Variables
-- Tambah `DATABASE_URL` dengan value connection string
+- Tambah `DATABASE_URL` dengan value connection string PostgreSQL
 - **Redeploy** (Deployments → ... → Redeploy)
+- Pastikan env var di-set untuk semua environment (Production, Preview, Development)
 
 ### Error: `prisma generate` failed during build
 **Penyebab**: `postinstall` script tidak jalan atau Prisma client corrupt.

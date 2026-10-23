@@ -14,7 +14,6 @@ export async function GET(
       include: {
         ustaz: true,
         santri: { orderBy: [{ nis: "asc" }] },
-        jadwal: { orderBy: [{ hari: "asc" }] },
       },
     });
     if (!kelas) {

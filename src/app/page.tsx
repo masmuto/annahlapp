@@ -2,36 +2,78 @@
 
 import { AppShell } from "@/components/app-shell";
 import { useEffect, useState } from "react";
-import { Database, Loader2, Sparkles } from "lucide-react";
+import { Database, Loader2, Sparkles, Cloud } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AnNahlLogo, AnNahlTagline } from "@/components/an-nahl-logo";
+import { SetupSupabaseView } from "@/components/views/setup-supabase-view";
 import { toast } from "sonner";
 
+type AppPhase =
+  | "loading"            // checking status
+  | "needs-setup"        // first-run wizard
+  | "needs-seed"         // DB has no users, but Supabase already configured — quick seed
+  | "ready";             // normal app
+
 export default function Home() {
-  const [needsSeed, setNeedsSeed] = useState<boolean | null>(null);
+  const [phase, setPhase] = useState<AppPhase>("loading");
   const [seeding, setSeeding] = useState(false);
 
-  // Check if database has users
+  // Check overall app status on mount
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then(() => {
-        // If we get here, the API is working. Try login as admin to see if seed needed.
-        return fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: "admin", password: "admin123" }),
-        });
-      })
-      .then((r) => {
-        if (r.ok) {
-          setNeedsSeed(false);
-        } else {
-          setNeedsSeed(true);
+    let active = true;
+
+    const checkStatus = async () => {
+      try {
+        // First, check if session exists (already logged in)
+        const meRes = await fetch("/api/auth/me");
+        const meData = await meRes.json();
+
+        if (meData.user) {
+          // Already logged in → go straight to app
+          if (active) setPhase("ready");
+          return;
         }
-      })
-      .catch(() => setNeedsSeed(true));
+
+        // Check setup status
+        const statusRes = await fetch("/api/setup/status");
+        const status = await statusRes.json();
+
+        if (active) {
+          if (status.needsSetup) {
+            // First-time setup needed
+            if (status.needsSupabaseSetup) {
+              // Show full wizard
+              setPhase("needs-setup");
+            } else {
+              // Supabase already configured & initialized — just need seed
+              setPhase("needs-seed");
+            }
+          } else {
+            // Database has users → check if login possible
+            // Try default admin login to see if seed is actually present
+            const loginRes = await fetch("/api/auth/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ username: "admin", password: "admin123" }),
+            });
+            if (loginRes.ok) {
+              setPhase("ready");
+            } else {
+              setPhase("needs-seed");
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Status check failed:", err);
+        if (active) setPhase("needs-seed");
+      }
+    };
+
+    checkStatus();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const runSeed = async () => {
@@ -43,7 +85,6 @@ export default function Home() {
       toast.success(
         `Berhasil! ${d.summary.santri} santri, ${d.summary.ustaz} ustaz, ${d.summary.kelas} kelas, 3 akun demo`
       );
-      setNeedsSeed(false);
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
       toast.error(String(err));
@@ -52,7 +93,8 @@ export default function Home() {
     }
   };
 
-  if (needsSeed === null) {
+  // ---- Loading ----
+  if (phase === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
@@ -63,7 +105,13 @@ export default function Home() {
     );
   }
 
-  if (needsSeed) {
+  // ---- Setup Wizard (first-run, when Supabase not yet configured) ----
+  if (phase === "needs-setup") {
+    return <SetupSupabaseView onComplete={() => window.location.reload()} />;
+  }
+
+  // ---- Seed prompt (DB empty but Supabase configured OR using local SQLite) ----
+  if (phase === "needs-seed") {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-primary/5 via-background to-emerald-50">
         <Card className="max-w-md w-full shadow-xl">
@@ -112,5 +160,6 @@ export default function Home() {
     );
   }
 
+  // ---- Ready: normal app ----
   return <AppShell />;
 }

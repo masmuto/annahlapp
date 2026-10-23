@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const kelas = await db.kelas.findMany({
       include: {
-        _count: { select: { santri: true, jadwal: true } },
+        _count: { select: { santri: true } },
         ustaz: true,
       },
       orderBy: [{ nama: "asc" }],

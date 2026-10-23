@@ -14,21 +14,11 @@ export async function GET(_req: NextRequest) {
         configured: false,
         error: "NEXT_PUBLIC_SUPABASE_URL atau NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY belum di-set di .env",
       },
-      { status: 200 }
+      { status: 500 }
     );
   }
 
   const supabase = createServerClient();
-  if (!supabase) {
-    return NextResponse.json(
-      {
-        configured: true,
-        connected: false,
-        error: "Gagal membuat Supabase client",
-      },
-      { status: 500 }
-    );
-  }
 
   try {
     // Test koneksi dengan query sederhana ke setiap tabel utama

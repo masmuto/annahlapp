@@ -1,105 +1,92 @@
 // Supabase client for GO An Nahl
-// Lazy initialization — Supabase client hanya dibuat saat pertama kali dipakai.
-// Ini mencegah crash saat build time jika env vars belum di-set.
+//
+// Two layers:
+//   1. Browser-side (publishable/anon key) — subject to RLS.
+//   2. Server-side (service role key) — bypasses RLS, server-only.
+//
+// Both layers read from `supabase-config.json` (written by the setup wizard)
+// first, then fall back to env vars. This allows runtime reconfiguration
+// without restarting the dev server.
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { readSupabaseConfig } from "@/lib/supabase-config";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+function loadConfig() {
+  // Only read the file on the server. On the browser, fall back to env vars
+  // (NEXT_PUBLIC_* are inlined at build time).
+  if (typeof window === "undefined") {
+    try {
+      return readSupabaseConfig();
+    } catch {
+      // fall through to env vars
+    }
+  }
+  return {
+    url: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+    publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+    configured: false,
+    configuredAt: "",
+  };
+}
+
+const cfg = loadConfig();
+
+const SUPABASE_URL = cfg.url;
+const SUPABASE_ANON_KEY = cfg.publishableKey;
+const SUPABASE_SERVICE_KEY = cfg.serviceRoleKey;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.warn(
+    "[supabase] Missing env vars. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, or use the Setup Wizard on first run."
+  );
+}
 
 /**
- * Flag: apakah Supabase terkonfigurasi (URL + anon key sudah di-set)
+ * Browser-side Supabase client.
+ * Uses anon/publishable key — subject to Row Level Security policies.
+ * Safe to use in 'use client' components.
+ */
+export const supabase: SupabaseClient = createClient(
+  SUPABASE_URL || "https://placeholder.supabase.co",
+  SUPABASE_ANON_KEY || "placeholder-anon-key",
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+    realtime: { params: { eventsPerSecond: 2 } },
+  }
+);
+
+/**
+ * Server-side Supabase client with service role key.
+ * Bypasses RLS — ONLY use in API routes / server components.
+ * NEVER import this in 'use client' code.
+ */
+export function createServerClient(): SupabaseClient {
+  if (!SUPABASE_SERVICE_KEY) {
+    console.warn(
+      "[supabase] SUPABASE_SERVICE_ROLE_KEY not set. Server client will use anon key (RLS applies)."
+    );
+    return createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+/**
+ * Helper: check if Supabase is configured
  */
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-
-/**
- * Helper: log warning jika Supabase belum dikonfigurasi
- */
-function warnNotConfigured(context: string) {
-  if (!isSupabaseConfigured) {
-    console.warn(
-      `[supabase:${context}] Not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local`
-    );
-  }
-}
-
-// === BROWSER CLIENT (lazy singleton) ===
-let _browserClient: SupabaseClient | null = null;
-
-/**
- * Browser-side Supabase client (anon/publishable key, subject to RLS).
- * Safe to call from 'use client' components.
- *
- * Returns null if not configured — caller harus cek isSupabaseConfigured dulu.
- */
-export function getSupabase(): SupabaseClient | null {
-  if (!isSupabaseConfigured) {
-    warnNotConfigured("getSupabase");
-    return null;
-  }
-  if (!_browserClient) {
-    _browserClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-      realtime: { params: { eventsPerSecond: 2 } },
-    });
-  }
-  return _browserClient;
-}
-
-/**
- * Backward-compat: `supabase` named export.
- * Throws helpful error if accessed saat belum configured (lebih informatif daripada crash di createClient).
- *
- * Prefer pakai `getSupabase()` untuk code baru.
- */
-export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
-  get(_target, prop) {
-    const client = getSupabase();
-    if (!client) {
-      throw new Error(
-        `supabase.${String(prop)} called but Supabase is not configured. ` +
-          `Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY env vars.`
-      );
-    }
-    const value = (client as unknown as Record<string | symbol, unknown>)[prop];
-    return typeof value === "function" ? value.bind(client) : value;
-  },
-});
-
-// === SERVER CLIENT (lazy factory) ===
-let _serverClient: SupabaseClient | null = null;
-
-/**
- * Server-side Supabase client with service role key (bypass RLS).
- * ONLY use in API routes / server components. NEVER import in 'use client'.
- *
- * Returns browser client (anon key) if service role key not set.
- * Returns null if neither configured.
- */
-export function createServerClient(): SupabaseClient | null {
-  if (!isSupabaseConfigured) {
-    warnNotConfigured("createServerClient");
-    return null;
-  }
-  if (!_serverClient) {
-    const key = SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY;
-    _serverClient = createClient(SUPABASE_URL, key, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-  }
-  return _serverClient;
-}
 
 /**
  * Table name constants — single source of truth for table references.
  */
 export const TABLES = {
-  USERS: "users",
+  USERS: "User",
   USTAZ: "ustaz",
   KELAS: "kelas",
   SANTRI: "santri",

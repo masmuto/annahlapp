@@ -10,7 +10,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { AnNahlLogo, AnNahlTagline } from "@/components/an-nahl-logo";
-import { SupabaseStatusBadge } from "@/components/supabase-status-badge";
 import { NAV_ITEMS, SETTINGS_ITEMS } from "@/components/sidebar";
 import type { ViewKey } from "@/lib/use-app-nav";
 import type { SessionUser } from "@/lib/auth";
@@ -173,9 +172,6 @@ export function Topbar({
             </div>
           ) : null}
         </div>
-
-        {/* Supabase status badge */}
-        <SupabaseStatusBadge />
 
         {/* Notifications & user */}
         <Button variant="ghost" size="icon" className="relative" aria-label="Notifikasi">

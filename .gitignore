@@ -1,24 +1,12 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
+node_modules/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
 # production
-/build
+build/
 
 # misc
 .DS_Store
@@ -28,31 +16,33 @@ node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+bun-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env
+# local env files
 .env.local
-.env.development
-.env.production
-!.env.example
+.env.development.local
+.env.test.local
+.env.production.local
 
 # vercel
 .vercel
 
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
-.claude
-.z-ai-config
-*.log
-dev.log
-dev.out.log
-test
-prompt
 
-server.log
-# Skills directory
-/skills/
+# prisma
+/prisma/migrations/
+
+# db files
+*.db
+*.db-journal
+db/
+
+# logs
+dev.log
+*.log
+
+# supabase runtime config (contains service_role key — DO NOT commit)
+# Uncomment to ignore:
+# supabase-config.json

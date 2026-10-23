@@ -14,6 +14,7 @@ import {
   UserCog,
   Database,
   MessageCircle,
+  Cloud,
 } from "lucide-react";
 import { AnNahlLogo, AnNahlTagline } from "@/components/an-nahl-logo";
 import type { ViewKey, NavItem } from "@/lib/use-app-nav";
@@ -35,6 +36,7 @@ const SETTINGS_ITEMS: NavItem[] = [
   { key: "profil", label: "Profil Saya", shortLabel: "Profil", icon: UserCircle, description: "Kelola profil Anda" },
   { key: "users", label: "Manajemen User", shortLabel: "User", icon: UserCog, description: "Kelola akun pengguna" },
   { key: "whatsapp", label: "Pesan WhatsApp", shortLabel: "WA", icon: MessageCircle, description: "Template & pengaturan WA" },
+  { key: "supabase-setup", label: "Koneksi Supabase", shortLabel: "Supabase", icon: Cloud, description: "Konfigurasi koneksi Supabase" },
   { key: "database", label: "Database", shortLabel: "DB", icon: Database, description: "Backup, restore, reset" },
 ];
 

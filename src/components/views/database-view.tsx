@@ -36,7 +36,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { SupabaseStatusCard } from "@/components/supabase-connection-banner";
 
 interface Stats {
   users: number;
@@ -187,9 +186,6 @@ export function DatabaseView() {
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
-      {/* Supabase Connection Status */}
-      <SupabaseStatusCard />
-
       {/* Stats overview */}
       <Card>
         <CardHeader>

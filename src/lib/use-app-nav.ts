@@ -13,7 +13,8 @@ export type ViewKey =
   | "profil"
   | "users"
   | "database"
-  | "whatsapp";
+  | "whatsapp"
+  | "supabase-setup";
 
 export interface NavItem {
   key: ViewKey;
@@ -27,7 +28,7 @@ function getInitialView(): ViewKey {
   if (typeof window === "undefined") return "dashboard";
   const hash = window.location.hash.replace("#", "");
   const v = hash.split("/")[0] as ViewKey;
-  const valid: ViewKey[] = ["dashboard", "santri", "ustaz", "kelas", "kelompok", "pembayaran", "laporan", "profil", "users", "database", "whatsapp"];
+  const valid: ViewKey[] = ["dashboard", "santri", "ustaz", "kelas", "kelompok", "pembayaran", "laporan", "profil", "users", "database", "whatsapp", "supabase-setup"];
   return valid.includes(v) ? v : "dashboard";
 }
 

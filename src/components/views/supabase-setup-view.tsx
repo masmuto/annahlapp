@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
+import { safeFetchJson } from "@/lib/safe-fetch";
 import {
   Cloud,
   Loader2,
@@ -65,8 +66,12 @@ export function SupabaseSetupView() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/setup/status");
-      const d = await res.json();
+      const result = await safeFetchJson<SetupStatus>("/api/setup/status");
+      if (!result.data) {
+        toast.error("Gagal memuat status: " + result.error);
+        return;
+      }
+      const d = result.data;
       setStatus(d);
       setUrl(d.supabase.url || "");
       // Don't pre-fill keys from server (they're masked); leave empty for user to re-enter
@@ -90,13 +95,18 @@ export function SupabaseSetupView() {
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/setup/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, publishableKey, serviceRoleKey }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Gagal simpan");
+      const result = await safeFetchJson<any>(
+        "/api/setup/config",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, publishableKey, serviceRoleKey }),
+        },
+        15000
+      );
+      if (!result.data) throw new Error(result.error);
+      const d = result.data;
+      if (!result.ok) throw new Error(d.error || "Gagal simpan");
       toast.success(d.message || "Konfigurasi disimpan");
       await refresh();
     } catch (err) {
@@ -110,17 +120,25 @@ export function SupabaseSetupView() {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch("/api/setup/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: url || undefined,
-          publishableKey: publishableKey || undefined,
-          serviceRoleKey: serviceRoleKey || undefined,
-          save: false,
-        }),
-      });
-      const d = await res.json();
+      const result = await safeFetchJson<any>(
+        "/api/setup/test",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: url || undefined,
+            publishableKey: publishableKey || undefined,
+            serviceRoleKey: serviceRoleKey || undefined,
+            save: false,
+          }),
+        },
+        60000 // 60s — Supabase tests can be slow
+      );
+      if (!result.data) {
+        toast.error("Gagal test koneksi: " + result.error);
+        return;
+      }
+      const d = result.data;
       setTestResult(d);
       if (d.ok) toast.success(d.message || "Koneksi berhasil");
       else toast.error(d.message || "Koneksi gagal");
@@ -135,7 +153,12 @@ export function SupabaseSetupView() {
     if (!confirm("Reset konfigurasi Supabase? Aplikasi akan kembali pakai env vars.")) return;
     setLoading(true);
     try {
-      await fetch("/api/setup/config", { method: "DELETE" });
+      const result = await safeFetchJson<any>(
+        "/api/setup/config",
+        { method: "DELETE" },
+        10000
+      );
+      if (!result.data) throw new Error(result.error);
       toast.success("Konfigurasi direset");
       await refresh();
     } catch (err) {

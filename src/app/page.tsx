@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { AnNahlLogo, AnNahlTagline } from "@/components/an-nahl-logo";
 import { SetupSupabaseView } from "@/components/views/setup-supabase-view";
+import { safeFetchJson } from "@/lib/safe-fetch";
 import { toast } from "sonner";
 
 type AppPhase =
@@ -79,9 +80,14 @@ export default function Home() {
   const runSeed = async () => {
     setSeeding(true);
     try {
-      const res = await fetch("/api/seed", { method: "POST" });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Gagal seed");
+      const result = await safeFetchJson<any>(
+        "/api/seed",
+        { method: "POST" },
+        120000
+      );
+      if (!result.data) throw new Error(result.error);
+      const d = result.data;
+      if (!result.ok) throw new Error(d.error || "Gagal seed");
       toast.success(
         `Berhasil! ${d.summary.santri} santri, ${d.summary.ustaz} ustaz, ${d.summary.kelas} kelas, 3 akun demo`
       );

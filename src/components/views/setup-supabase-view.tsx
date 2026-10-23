@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AnNahlLogo, AnNahlTagline } from "@/components/an-nahl-logo";
+import { safeFetchJson } from "@/lib/safe-fetch";
 import { toast } from "sonner";
 import {
   Cloud,
@@ -116,8 +117,12 @@ export function SetupSupabaseView({ onComplete }: { onComplete: () => void }) {
 
   const refreshStatus = async () => {
     try {
-      const res = await fetch("/api/setup/status");
-      const d = await res.json();
+      const result = await safeFetchJson<SetupStatus>("/api/setup/status");
+      if (!result.data) {
+        console.error("Failed to load status:", result.error);
+        return;
+      }
+      const d = result.data;
       setStatus(d);
 
       // Pre-fill from saved config if available
@@ -137,17 +142,27 @@ export function SetupSupabaseView({ onComplete }: { onComplete: () => void }) {
     setLoading(true);
     setTestResult(null);
     try {
-      const res = await fetch("/api/setup/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url,
-          publishableKey,
-          serviceRoleKey,
-          save: saveFirst,
-        }),
-      });
-      const d = (await res.json()) as TestResult;
+      const result = await safeFetchJson<TestResult>(
+        "/api/setup/test",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url,
+            publishableKey,
+            serviceRoleKey,
+            save: saveFirst,
+          }),
+        },
+        60000 // 60s timeout — Supabase tests can be slow
+      );
+
+      if (!result.data) {
+        toast.error("Gagal test koneksi: " + result.error);
+        return;
+      }
+
+      const d = result.data;
       setTestResult(d);
       if (d.ok) {
         toast.success(d.message || "Koneksi berhasil!");
@@ -166,12 +181,22 @@ export function SetupSupabaseView({ onComplete }: { onComplete: () => void }) {
     setLoading(true);
     setInitResult(null);
     try {
-      const res = await fetch("/api/setup/init", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, publishableKey, serviceRoleKey }),
-      });
-      const d = (await res.json()) as InitResult;
+      const result = await safeFetchJson<InitResult>(
+        "/api/setup/init",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, publishableKey, serviceRoleKey }),
+        },
+        60000
+      );
+
+      if (!result.data) {
+        toast.error("Gagal inisialisasi: " + result.error);
+        return;
+      }
+
+      const d = result.data;
       setInitResult(d);
       if (d.ok) {
         toast.success("Schema berhasil diinisialisasi di Supabase!");
@@ -215,9 +240,14 @@ export function SetupSupabaseView({ onComplete }: { onComplete: () => void }) {
     setLoading(true);
     try {
       // Trigger seed to fill Supabase with demo data
-      const res = await fetch("/api/seed?force=true", { method: "POST" });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Gagal seed");
+      const result = await safeFetchJson<any>(
+        "/api/seed?force=true",
+        { method: "POST" },
+        120000 // 2 min — seed can take a while (85 santri + payments)
+      );
+      if (!result.data) throw new Error(result.error);
+      const d = result.data;
+      if (!result.ok) throw new Error(d.error || "Gagal seed");
       toast.success(
         `Berhasil! ${d.summary?.santri || 0} santri, ${d.summary?.ustaz || 0} ustaz dimuat.`
       );
@@ -232,9 +262,14 @@ export function SetupSupabaseView({ onComplete }: { onComplete: () => void }) {
     // User chooses local SQLite — just run seed
     setLoading(true);
     try {
-      const res = await fetch("/api/seed", { method: "POST" });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Gagal seed");
+      const result = await safeFetchJson<any>(
+        "/api/seed",
+        { method: "POST" },
+        120000
+      );
+      if (!result.data) throw new Error(result.error);
+      const d = result.data;
+      if (!result.ok) throw new Error(d.error || "Gagal seed");
       toast.success(`Berhasil! ${d.summary?.santri || 0} santri dimuat.`);
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
